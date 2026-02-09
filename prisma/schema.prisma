@@ -1,0 +1,94 @@
+// Staff Booking & Availability System - Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  CLIENT
+}
+
+enum BookingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  mobile    String   @unique
+  password  String
+  role      Role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Staff-specific fields
+  state String? // Indian, North-East, Thai
+
+  // Relations
+  staffAvailability StaffAvailability[]
+  bookingsAsClient  Booking[]         @relation("ClientBookings")
+  bookingsAsStaff   Booking[]         @relation("StaffBookings")
+  notifications     Notification[]
+
+  @@index([role])
+  @@index([mobile])
+}
+
+model StaffAvailability {
+  id      String   @id @default(cuid())
+  staffId String
+  date    DateTime @db.Date
+  slots   String[] // 11:00 to 21:00 (60-min slots)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff User @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, date])
+  @@index([staffId])
+  @@index([date])
+}
+
+model Booking {
+  id        String        @id @default(cuid())
+  clientId  String
+  staffId   String
+  date      DateTime      @db.Date
+  slotTime  String        // Start time e.g., "11:00"
+  duration  Int           @default(60) // 60, 90, or 120 minutes
+  status    BookingStatus @default(PENDING)
+  message   String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  client User @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)
+  staff  User @relation("StaffBookings", fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([staffId])
+  @@index([date])
+  @@index([status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  message   String
+  type      String   @default("INFO") // INFO, SUCCESS, ERROR
+  isRead    Boolean  @default(false)
+  bookingId String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
