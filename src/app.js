@@ -55,6 +55,9 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: "Welcome to the Jollly Appllication" });
+});
 app.use(errorHandler);
 
 module.exports = app;
