@@ -43,6 +43,9 @@ router.get('/staff-available', authenticate, async (req, res, next) => {
       },
     });
 
+    // Staff is shown available 15 minutes after a booking ends (buffer between clients)
+    const BUFFER_AFTER_BOOKING_MINUTES = 15;
+
     const INTERVAL = 15;
     const generate15MinSlots = () => {
       const list = [];
@@ -75,7 +78,8 @@ router.get('/staff-available', authenticate, async (req, res, next) => {
         .filter((b) => b.staffId === staffId)
         .map((b) => {
           const start = timeToMinutes(b.slotTime);
-          return { start, end: start + (b.duration || 60) };
+          const duration = b.duration || 60;
+          return { start, end: start + duration + BUFFER_AFTER_BOOKING_MINUTES };
         });
     };
 
@@ -161,6 +165,7 @@ router.post('/bookings', authenticate, authorize('CLIENT'), async (req, res, nex
       return res.status(400).json({ error: 'Invalid time slot' });
     }
 
+    const BUFFER_AFTER_BOOKING_MINUTES = 15;
     const newStart = timeToMinutes(slotTime);
     const newEnd = newStart + validDuration;
     const existingRanges = (await prisma.booking.findMany({
@@ -169,10 +174,11 @@ router.post('/bookings', authenticate, authorize('CLIENT'), async (req, res, nex
         date: dateObj,
         status: { in: ['PENDING', 'APPROVED'] },
       },
-    })).map((b) => ({
-      start: timeToMinutes(b.slotTime),
-      end: timeToMinutes(b.slotTime) + (b.duration || 60),
-    }));
+    })).map((b) => {
+      const start = timeToMinutes(b.slotTime);
+      const duration = b.duration || 60;
+      return { start, end: start + duration + BUFFER_AFTER_BOOKING_MINUTES };
+    });
 
     if (overlaps(newStart, newEnd, existingRanges)) {
       return res.status(409).json({ error: 'This time slot overlaps with an existing booking' });

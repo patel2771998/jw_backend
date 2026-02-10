@@ -10,6 +10,80 @@ const router = express.Router();
 router.use(authenticate, authorize('ADMIN'));
 
 /**
+ * GET /api/admin/dashboard/staff-message-counts
+ * Filter by month: messages (notifications), booked/completed bookings count, and total booked time per staff.
+ * Query: period=this_month (default), or month=YYYY-MM
+ */
+router.get('/dashboard/staff-message-counts', async (req, res, next) => {
+  try {
+    const { period, month } = req.query;
+    let startDate, endDate;
+
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      const [y, m] = month.split('-').map(Number);
+      startDate = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0, 0));
+      endDate = new Date(Date.UTC(y, m - 1 + 1, 0, 23, 59, 59, 999));
+    } else {
+      const now = new Date();
+      startDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0));
+      endDate = new Date();
+    }
+
+    const staff = await prisma.user.findMany({
+      where: { role: 'STAFF' },
+      select: { id: true, name: true, state: true },
+      orderBy: { name: 'asc' },
+    });
+    const staffIds = staff.map((s) => s.id);
+
+    // Notifications (messages) received per staff in period
+    const notificationCounts = await prisma.notification.groupBy({
+      by: ['userId'],
+      where: {
+        userId: { in: staffIds },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      _count: { id: true },
+    });
+    const messageCountMap = Object.fromEntries(notificationCounts.map((c) => [c.userId, c._count.id]));
+
+    // Approved (booked & complete) bookings per staff in period: count and total duration
+    const bookingsInPeriod = await prisma.booking.findMany({
+      where: {
+        staffId: { in: staffIds },
+        status: 'APPROVED',
+        date: { gte: startDate, lte: endDate },
+      },
+      select: { staffId: true, duration: true },
+    });
+    const bookingCountMap = {};
+    const totalMinutesMap = {};
+    for (const b of bookingsInPeriod) {
+      bookingCountMap[b.staffId] = (bookingCountMap[b.staffId] || 0) + 1;
+      totalMinutesMap[b.staffId] = (totalMinutesMap[b.staffId] || 0) + (b.duration || 60);
+    }
+
+    const result = staff.map((s) => ({
+      staffId: s.id,
+      name: s.name,
+      state: s.state,
+      messageCount: messageCountMap[s.id] || 0,
+      bookingCount: bookingCountMap[s.id] || 0,
+      totalMinutes: totalMinutesMap[s.id] || 0,
+    }));
+
+    res.json({
+      period: period || 'this_month',
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      staff: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/admin/staff
  * List all staff
  */
