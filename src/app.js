@@ -13,10 +13,18 @@ const app = express();
 
 const allowedOrigins = config.corsOrigin;
 
+// Allow origin if in list, or on Vercel when CORS_ORIGIN not set (allow *.vercel.app)
+function isOriginAllowed(origin) {
+  if (!origin) return false;
+  if (allowedOrigins.includes(origin)) return true;
+  if (process.env.VERCEL && (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN.trim() === '') && origin.endsWith('.vercel.app')) return true;
+  return false;
+}
+
 // Set CORS headers on every response so preflight and errors always get them
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
+  if (origin && isOriginAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -29,7 +37,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-  origin: (o, cb) => (!o || allowedOrigins.includes(o) ? cb(null, true) : cb(null, false)),
+  origin: (o, cb) => (!o || isOriginAllowed(o) ? cb(null, true) : cb(null, false)),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
